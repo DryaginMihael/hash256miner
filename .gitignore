@@ -1,0 +1,6 @@
+.env
+*.o
+*.a
+miner
+miner.log
+cuda/keccak_miner.o
