@@ -26,9 +26,20 @@ const (
 )
 
 type epochState struct {
-	challenge [32]byte
-	target    [32]byte
-	block     uint64
+	challenge  [32]byte
+	target     [32]byte
+	block      uint64
+	difficulty *big.Int // 2^256 / target, для расчёта ETA
+}
+
+// targetToDifficulty вычисляет ожидаемое число хэшей до решения
+func targetToDifficulty(target [32]byte) *big.Int {
+	t := new(big.Int).SetBytes(target[:])
+	if t.Sign() == 0 {
+		return new(big.Int)
+	}
+	max := new(big.Int).Lsh(big.NewInt(1), 256)
+	return new(big.Int).Div(max, t)
 }
 
 func initGPU(deviceID int) error {
@@ -84,7 +95,9 @@ func miningLoop(ctx context.Context, cfg *Config, rpc *rpcClient) error {
 	setChallenge(current.challenge, current.target)
 
 	hashCount := uint64(0)
+	submits := 0
 	startTime := time.Now()
+	lastFound := time.Now()
 
 	log("Mining started | wallet=%s | device=%d", cfg.WalletAddress, cfg.GPUDevice)
 
@@ -102,23 +115,46 @@ func miningLoop(ctx context.Context, cfg *Config, rpc *rpcClient) error {
 			nonce, found := gpuMine(ctx, BATCH_SIZE)
 			hashCount += BATCH_SIZE
 
-			elapsed := time.Since(startTime).Seconds()
-			if elapsed > 0 && hashCount%(BATCH_SIZE*100) == 0 {
+			// Лог раз в ~100 батчей (~2 сек)
+			if hashCount%(BATCH_SIZE*100) == 0 {
+				elapsed := time.Since(startTime).Seconds()
 				ghs := float64(hashCount) / elapsed / 1e9
-				log("Hashrate: %.2f GH/s | batches: %d", ghs, hashCount/BATCH_SIZE)
+
+				// ETA: сколько секунд в среднем до решения
+				var eta string
+				if current.difficulty != nil && ghs > 0 {
+					diffF, _ := new(big.Float).SetInt(current.difficulty).Float64()
+					etaSec := diffF / (ghs * 1e9)
+					eta = fmt.Sprintf("~%.0fs", etaSec)
+				} else {
+					eta = "?"
+				}
+
+				// Блоков до смены эпохи
+				blocksLeft := 100 - (current.block % 100)
+
+				log("%.2f GH/s | block=%d (epoch -%d blk) | ETA=%s | solved=%d | since last=%.0fs",
+					ghs,
+					current.block,
+					blocksLeft,
+					eta,
+					submits,
+					time.Since(lastFound).Seconds(),
+				)
 			}
 
 			if found {
-				log("Nonce found: %s", nonce.String())
+				log("*** Nonce found: %s (after %.0fs)", nonce.String(), time.Since(lastFound).Seconds())
 				if err := submitNonce(ctx, cfg, rpc, nonce); err != nil {
 					log("Submit error: %v", err)
 				} else {
-					log("mine(nonce) submitted successfully")
+					submits++
+					lastFound = time.Now()
+					log("*** mine(nonce) submitted | total solved: %d", submits)
 					hashCount = 0
 					startTime = time.Now()
 				}
-				// После сабмита принудительно обновить challenge
-				time.Sleep(15 * time.Second) // ждём включения в блок
+				time.Sleep(15 * time.Second)
 				if err := updateEpoch(ctx, cfg, rpc, &current); err != nil {
 					log("post-submit epoch update: %v", err)
 				}
@@ -160,9 +196,11 @@ func updateEpoch(ctx context.Context, cfg *Config, rpc *rpcClient, state *epochS
 	state.challenge = challenge
 	state.target = target
 	state.block = block
+	state.difficulty = targetToDifficulty(target)
 
-	log("Epoch updated | block=%d | challenge=%x | target=%x",
-		block, challenge[:8], target[:8])
+	diff, _ := new(big.Float).SetInt(state.difficulty).Float64()
+	log("Epoch updated | block=%d | challenge=%x | difficulty=%.2e",
+		block, challenge[:8], diff)
 	return nil
 }
 
