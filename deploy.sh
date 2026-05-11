@@ -2,16 +2,17 @@
 # Деплой на RunPod одной командой
 set -e
 
-SERVER="$1"  # root@<runpod-ip>
+SERVER="$1"  # 73grnxpa3zxoxl-644114f3@ssh.runpod.io
 if [ -z "$SERVER" ]; then
-  echo "Usage: $0 root@<runpod-ip>"
+  echo "Usage: $0 <user>@ssh.runpod.io"
   exit 1
 fi
 
+SSH_OPTS="-i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no"
 REMOTE_DIR="/opt/hash256-miner-go"
 
 echo "=== Устанавливаем зависимости на сервере ==="
-ssh "$SERVER" bash -s <<'REMOTE_SETUP'
+ssh $SSH_OPTS "$SERVER" bash -s <<'REMOTE_SETUP'
 set -e
 # CUDA toolkit (если не установлен)
 if ! command -v nvcc &>/dev/null; then
@@ -33,19 +34,19 @@ nvcc --version | head -2
 REMOTE_SETUP
 
 echo "=== Копируем исходники ==="
-ssh "$SERVER" "mkdir -p $REMOTE_DIR"
-rsync -avz --exclude='.git' --exclude='*.o' --exclude='*.a' --exclude='miner' \
+ssh $SSH_OPTS "$SERVER" "mkdir -p $REMOTE_DIR"
+rsync -avz -e "ssh $SSH_OPTS" --exclude='.git' --exclude='*.o' --exclude='*.a' --exclude='miner' \
   ./ "$SERVER:$REMOTE_DIR/"
 
 echo "=== Устанавливаем .env ==="
 if [ -f .env ]; then
-  scp .env "$SERVER:$REMOTE_DIR/.env"
+  scp $SSH_OPTS .env "$SERVER:$REMOTE_DIR/.env"
 else
   echo "ВНИМАНИЕ: .env не найден. Скопируй его вручную на сервер."
 fi
 
 echo "=== Собираем на сервере ==="
-ssh "$SERVER" bash -s "$REMOTE_DIR" <<'REMOTE_BUILD'
+ssh $SSH_OPTS "$SERVER" bash -s "$REMOTE_DIR" <<'REMOTE_BUILD'
 set -e
 export PATH=$PATH:/usr/local/go/bin:/usr/local/cuda/bin
 cd "$1"
@@ -55,7 +56,7 @@ echo "BUILD OK: $(ls -lh miner)"
 REMOTE_BUILD
 
 echo "=== Запускаем ==="
-ssh "$SERVER" bash -s "$REMOTE_DIR" <<'REMOTE_RUN'
+ssh $SSH_OPTS "$SERVER" bash -s "$REMOTE_DIR" <<'REMOTE_RUN'
 export PATH=$PATH:/usr/local/go/bin:/usr/local/cuda/bin
 cd "$1"
 # Убиваем предыдущий инстанс если есть
