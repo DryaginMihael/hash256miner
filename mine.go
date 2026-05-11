@@ -103,7 +103,7 @@ func miningLoop(ctx context.Context, cfg *Config, rpc *rpcClient) error {
 			hashCount += BATCH_SIZE
 
 			elapsed := time.Since(startTime).Seconds()
-			if elapsed > 0 {
+			if elapsed > 0 && hashCount%(BATCH_SIZE*100) == 0 {
 				ghs := float64(hashCount) / elapsed / 1e9
 				log("Hashrate: %.2f GH/s | batches: %d", ghs, hashCount/BATCH_SIZE)
 			}
