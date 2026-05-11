@@ -141,6 +141,9 @@ __global__ void mine_kernel(uint64_t start_nonce) {
     }
 }
 
+// ── Host-side globals ────────────────────────────────────────────────────────
+static int g_device_id = 0;
+
 // ── Host-side helpers ─────────────────────────────────────────────────────────
 
 static uint64_t load_be64(const uint8_t *p) {
@@ -205,8 +208,6 @@ void cuda_set_challenge(const uint8_t challenge_be[32], const uint8_t target_be[
 
     fprintf(stderr, "[cuda] challenge set, target[0]=%016llx\n", (unsigned long long)tgt[0]);
 }
-
-static int g_device_id = 0;
 
 int cuda_mine(uint64_t start_nonce, uint64_t batch_size, uint64_t *out_nonce) {
     cudaSetDevice(g_device_id);
