@@ -160,6 +160,7 @@ static uint64_t load_le64(const uint8_t *p) {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 int cuda_init(int device_id) {
+    g_device_id = device_id;
     cudaError_t err = cudaSetDevice(device_id);
     if (err != cudaSuccess) {
         fprintf(stderr, "[cuda] cudaSetDevice(%d): %s\n", device_id, cudaGetErrorString(err));
@@ -205,7 +206,11 @@ void cuda_set_challenge(const uint8_t challenge_be[32], const uint8_t target_be[
     fprintf(stderr, "[cuda] challenge set, target[0]=%016llx\n", (unsigned long long)tgt[0]);
 }
 
+static int g_device_id = 0;
+
 int cuda_mine(uint64_t start_nonce, uint64_t batch_size, uint64_t *out_nonce) {
+    cudaSetDevice(g_device_id);
+
     // Сброс флага перед батчем
     int zero = 0;
     cudaMemcpyToSymbol(d_found, &zero, sizeof(zero));

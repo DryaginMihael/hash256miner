@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"runtime"
 	"time"
 	"unsafe"
 )
@@ -79,6 +80,10 @@ func gpuMine(ctx context.Context, batchSize uint64) (nonce *big.Int, found bool)
 
 // miningLoop — главный цикл: следит за эпохой, запускает GPU, сабмитит нонс
 func miningLoop(ctx context.Context, cfg *Config, rpc *rpcClient) error {
+	// CUDA-контекст привязан к OS-треду — фиксируем горутину на одном треде
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	if err := initGPU(cfg.GPUDevice); err != nil {
 		return err
 	}
