@@ -22,7 +22,8 @@ $(CUDA_LIB): $(CUDA_SRCS) cuda/keccak_miner.h
 
 # 2. Компилируем Go-бинарь (CGo подхватит libkeccak_miner.a через LDFLAGS в mine.go)
 miner: $(CUDA_LIB) main.go mine.go rpc.go tx.go
-	CGO_ENABLED=1 $(GO) build -o miner .
+	CGO_ENABLED=1 CGO_LDFLAGS="-L$(CUDA_HOME)/lib64 -Wl,-rpath,$(CUDA_HOME)/lib64" \
+		$(GO) build -o miner .
 
 clean:
 	rm -f cuda/*.o $(CUDA_LIB) miner
